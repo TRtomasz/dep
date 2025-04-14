@@ -62,8 +62,8 @@
     <script>
         // Network configuration
         const BASE_MAINNET = {
-            chainId: '0x2105',
-            chainName: 'Base',
+            chainId: '0x01',
+            chainName: 'mainnet',
             nativeCurrency: {
                 name: 'Ether',
                 symbol: 'ETH',
@@ -160,7 +160,7 @@
                 // Check if we're on Base
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const network = await provider.getNetwork();
-                if (network.chainId !== BigInt(8453)) { // Base mainnet chain ID
+                if (network.chainId !== BigInt(1)) { // Base mainnet chain ID
                     document.getElementById('result').innerHTML = 'Please switch to Base network to continue.';
                     return;
                 }
@@ -257,7 +257,7 @@
                     params: [{
                         version: '1.0',
                         from: userAddress,
-                        chainId: '0x2105', // Base chain ID
+                        chainId: '0x01', // Base chain ID
                         atomicRequired: true, // Make the batch atomic
                         calls: formattedCalls,
                         capabilities: {} // No special capabilities needed
