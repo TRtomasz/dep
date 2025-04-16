@@ -202,7 +202,7 @@
                 // to repro ambire estimation bug (https://github.com/AmbireTech/ambire-app/issues/4401), use this: 
                 //const startSalt = '0'
                 // and reduce this to 2 (because with higher numbers we always fail with the error)
-                const NUMBER_OF_TRANSACTIONS = 35;
+                const NUMBER_OF_TRANSACTIONS = 15;
                 // Create many pairs of deploy + call transactions with different salts
                 for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
                     // Create unique salt for each deployment by adding i to the random start
