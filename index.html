@@ -203,7 +203,7 @@
                 //const startSalt = '0'
                 // and reduce this to 2 (because with higher numbers we always fail with the error)
                                 const salt = ethers.toBeHex(
-                        ethers.toBigInt(startSalt) + BigInt(i),
+                        ethers.toBigInt(startSalt) + BigInt(1),
                         32
                     );
                     
