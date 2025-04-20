@@ -223,7 +223,7 @@
                         salt,
                         ethers.keccak256(DUMMY_BYTECODE)
                     );
-                const NUMBER_OF_TRANSACTIONS = 50;
+                const NUMBER_OF_TRANSACTIONS = 10;
                                     transactions.push(deployTx);
                 // Create many pairs of deploy + call transactions with different salts
                 for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
