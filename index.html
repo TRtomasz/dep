@@ -202,8 +202,12 @@
                 // to repro ambire estimation bug (https://github.com/AmbireTech/ambire-app/issues/4401), use this: 
                 //const startSalt = '0'
                 // and reduce this to 2 (because with higher numbers we always fail with the error)
-                                const salt = ethers.toBeHex(
-                        ethers.toBigInt(startSalt) + BigInt(1),
+                const NUMBER_OF_TRANSACTIONS = 10;
+                // Create many pairs of deploy + call transactions with different salts
+                for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
+                    // Create unique salt for each deployment by adding i to the random start
+                    const salt = ethers.toBeHex(
+                        ethers.toBigInt(startSalt) + BigInt(i),
                         32
                     );
                     
@@ -223,12 +227,6 @@
                         salt,
                         ethers.keccak256(DUMMY_BYTECODE)
                     );
-                const NUMBER_OF_TRANSACTIONS = 10;
-                                    transactions.push(deployTx);
-                // Create many pairs of deploy + call transactions with different salts
-                for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
-                    // Create unique salt for each deployment by adding i to the random start
-    
 
                     // Call transaction
                     const callTx = {
@@ -238,7 +236,7 @@
                     };
 
                     // Add both transactions to array
-
+                    transactions.push(deployTx);
                     transactions.push(callTx);
                 }
 
